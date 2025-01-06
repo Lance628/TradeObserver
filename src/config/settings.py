@@ -28,3 +28,6 @@ EMAIL_CONFIG = {
     'sender_password': 'zlmggcflipgmbcbc',  # 对于Gmail，需要使用应用专用密码
     'recipient_email': '774127995@qq.com'
 }
+
+# K线周期配置（分钟）
+CANDLE_PERIODS = [1, 5, 15, 30]

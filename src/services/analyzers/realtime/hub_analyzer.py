@@ -24,6 +24,42 @@ class HubAnalyzer(RealTimeAnalyzer):
         
         self.email_notifier = EmailNotifier()
         self.db_manager = DatabaseManager()
+        
+        # 从数据库恢复数据
+        self._restore_from_database()
+    
+    def _restore_from_database(self):
+        """从数据库恢复最近的K线数据和中枢状态"""
+        try:
+            if not self.current_code:
+                return
+                
+            # 获取最近30根1分钟K线
+            latest_candles = self.db_manager.get_candles(
+                code=self.current_code,
+                period=1,
+                limit=30
+            )
+            
+            if not latest_candles:
+                self.logger.info("未找到历史K线数据，将从头开始分析")
+                return
+                
+            # 更新K线列表
+            self.candles = latest_candles
+            
+            # 尝试在最近的K线中找到中枢
+            potential_hub = self._find_hub_in_candles(
+                self.candles[-self.min_candles_for_hub:]
+            )
+            
+            if potential_hub:
+                self.current_hub = potential_hub
+                self.active_hubs.append(potential_hub)
+                self.logger.info(f"从历史数据中恢复中枢: {potential_hub}")
+            
+        except Exception as e:
+            self.logger.error(f"从数据库恢复数据失败: {str(e)}")
     
     def on_price_update(self, code: str, price_data: dict):
         """接收价格更新，将数据放入队列"""

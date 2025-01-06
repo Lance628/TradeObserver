@@ -7,7 +7,7 @@ from src.services.analyzers.realtime.hub_analyzer import HubAnalyzer
 from src.database.database import DatabaseManager
 from src.utils.time_utils import is_trading_time, get_market_status, get_next_trading_time, get_seconds_to_next_check
 from src.utils.logger import setup_logger
-from src.config.settings import ETF_CODES, FETCH_INTERVAL, EMAIL_CONFIG
+from src.config.settings import ETF_CODES, FETCH_INTERVAL, EMAIL_CONFIG, CANDLE_PERIODS
 from src.services.analyzers.analyzer_manager import AnalyzerManager
 from src.services.analyzers.realtime.hub_analyzer import HubAnalyzer
 
@@ -22,13 +22,13 @@ def main():
     data_fetcher = DataFetcher()
     
     # 初始化分析器管理器
-    analyzer_manager = AnalyzerManager()
+    # analyzer_manager = AnalyzerManager()
     
     # 确保邮件配置正确
     assert all(EMAIL_CONFIG.values()), "请先配置邮件设置"
     
     # 创建并启动K线管理器
-    candle_manager = CandleManager(periods=[1, 5, 15, 30])
+    candle_manager = CandleManager()
     candle_manager.start()
     
     # 创建中枢分析器
@@ -41,14 +41,19 @@ def main():
     # 启动分析器
     hub_analyzer.start()
     
-    analyzer_manager.add_realtime_analyzer(hub_analyzer)
-    analyzer_manager.start()
+    # analyzer_manager.add_realtime_analyzer(hub_analyzer)
+    # analyzer_manager.start()
     
     logger.info("ETF监控程序启动")
     
     try:
         while True:
             if not is_trading_time():
+                # 如果刚好是交易结束时间，保存所有未保存的K线
+                current_time = datetime.now()
+                if current_time.hour == 15 and current_time.minute == 0:
+                    candle_manager.save_and_clear_current_candles()
+                
                 status = get_market_status()
                 next_trading = get_next_trading_time()
                 wait_seconds = get_seconds_to_next_check()

@@ -7,11 +7,12 @@ from queue import Queue
 from ...models.candle import Candle
 from ...database.database import DatabaseManager
 from ...utils.logger import setup_logger
+from ...config.settings import CANDLE_PERIODS
 
 class CandleManager(threading.Thread):
-    def __init__(self, periods: List[int] = [1, 5, 15, 30]):
+    def __init__(self):
         super().__init__()
-        self.periods = periods
+        self.periods = CANDLE_PERIODS
         self.logger = setup_logger(__name__)
         self.db_manager = DatabaseManager()
         self._candles = defaultdict(lambda: {})
@@ -111,14 +112,35 @@ class CandleManager(threading.Thread):
         except Exception as e:
             self.logger.error(f"保存K线失败: {str(e)}")
 
-    def check_and_save_missing_candles(self, code: str, start_date: datetime, end_date: datetime):
-        """检查并保存缺失的K线数据
+    def save_and_clear_current_candles(self, code: str = None):
+        """保存并清理当前所有K线数据
         
         Args:
-            code: ETF代码
-            start_date: 开始日期
-            end_date: 结束日期
+            code: ETF代码，如果为None则处理所有代码的K线
         """
+        try:
+            # 获取需要处理的candle_keys
+            candle_keys = []
+            if code:
+                # 只处理指定code的所有周期
+                candle_keys = [(code, period) for period in self.periods]
+            else:
+                # 处理所有已存在的candle_keys
+                candle_keys = list(self._candles.keys())
+            
+            # 保存并清理K线
+            for candle_key in candle_keys:
+                if candle_key in self._candles:
+                    self._save_candle(self._candles[candle_key])
+                    del self._candles[candle_key]
+            
+            self.logger.info(f"已保存并清理K线数据: {code if code else '所有代码'}")
+            
+        except Exception as e:
+            self.logger.error(f"保存并清理K线数据时出错: {str(e)}")
+
+    def check_and_save_missing_candles(self, code: str, start_date: datetime, end_date: datetime):
+        """检查并保存缺失的K线数据"""
         try:
             # 从数据库获取原始价格数据
             price_data = self.db_manager.get_price_data(code, start_date, end_date)
@@ -137,13 +159,8 @@ class CandleManager(threading.Thread):
                 for period in self.periods:
                     self._update_candle(code, period, timestamp, price, volume, amount)
             
-            # 保存所有周期的最后一个K线
-            for period in self.periods:
-                candle_key = (code, period)
-                if candle_key in self._candles:
-                    self._save_candle(self._candles[candle_key])
-                    # 清理已保存的K线
-                    del self._candles[candle_key]
+            # 使用新方法保存并清理K线
+            self.save_and_clear_current_candles(code)
             
             self.logger.info(f"完成缺失K线检查和保存: {code} {start_date} - {end_date}")
             

@@ -109,7 +109,8 @@ class DatabaseManager:
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute('''
-                SELECT * FROM candles 
+                SELECT timestamp, code, period, open, high, low, close, volume, amount 
+                FROM candles 
                 WHERE code = ? AND period = ?
                 ORDER BY timestamp DESC
                 LIMIT ?
@@ -118,15 +119,15 @@ class DatabaseManager:
             rows = cursor.fetchall()
             return [
                 Candle(
-                    timestamp=row['timestamp'],
-                    code=row['code'],
-                    period=row['period'],
-                    open=row['open'],
-                    high=row['high'],
-                    low=row['low'],
-                    close=row['close'],
-                    volume=row['volume'],
-                    amount=row['amount']
+                    timestamp=row[0],  # 使用索引位置访问
+                    code=row[1],
+                    period=row[2],
+                    open=row[3],
+                    high=row[4],
+                    low=row[5],
+                    close=row[6],
+                    volume=row[7],
+                    amount=row[8]
                 )
                 for row in reversed(rows)
             ]
