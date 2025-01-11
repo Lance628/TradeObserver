@@ -8,6 +8,7 @@ from ...models.candle import Candle
 from ...database.database import DatabaseManager
 from ...utils.logger import setup_logger
 from ...config.settings import CANDLE_PERIODS
+from ..analyzers.realtime.hub_analyzer import HubAnalyzer
 
 class CandleManager(threading.Thread):
     def __init__(self):
@@ -18,6 +19,9 @@ class CandleManager(threading.Thread):
         self._candles = defaultdict(lambda: {})
         self._price_queue = Queue()
         self._running = True
+        
+        # 存储不同周期的 analyzers
+        self._analyzers: Dict[int, List[HubAnalyzer]] = defaultdict(list)
 
     def run(self):
         """线程主循环"""
@@ -50,7 +54,7 @@ class CandleManager(threading.Thread):
         self._price_queue.put((code, timestamp, price, volume, amount))
 
     def _get_period_start_time(self, timestamp: datetime, period: int) -> datetime:
-        """计算K线周期的开始时间
+        """计算A股市场K线周期的开始时间
         
         Args:
             timestamp: 当前时间戳
@@ -59,17 +63,46 @@ class CandleManager(threading.Thread):
         Returns:
             datetime: 当前K线的开始时间
         """
-        # 将分钟数转换为总分钟数
-        total_minutes = timestamp.hour * 60 + timestamp.minute
+        # 转换为当日分钟数
+        hour, minute = timestamp.hour, timestamp.minute
+        
+        # 计算交易时间的分钟数（考虑午休时间）
+        if hour < 9 or (hour == 9 and minute < 30):
+            # 早于开盘时间，使用开盘时间
+            total_minutes = 0
+        elif hour < 11 or (hour == 11 and minute <= 30):
+            # 上午交易时段
+            total_minutes = (hour * 60 + minute) - (9 * 60 + 30)
+        elif hour < 13:
+            # 午休时间，使用上午最后一个周期
+            total_minutes = 120  # 11:30 - 9:30 = 120分钟
+        elif hour < 15:
+            # 下午交易时段
+            total_minutes = 120 + (hour * 60 + minute) - (13 * 60)
+        else:
+            # 收盘后，使用最后一个周期
+            total_minutes = 240  # 全天交易分钟数
+        
         # 计算当前周期的开始分钟数
         period_start_minutes = (total_minutes // period) * period
-        # 构建新的datetime对象
-        return timestamp.replace(
-            hour=period_start_minutes // 60,
-            minute=period_start_minutes % 60,
-            second=0,
-            microsecond=0
-        )
+        
+        # 将周期开始分钟数转换回实际时间
+        if period_start_minutes < 120:  # 上午时段
+            actual_minutes = period_start_minutes + (9 * 60 + 30)
+            return timestamp.replace(
+                hour=actual_minutes // 60,
+                minute=actual_minutes % 60,
+                second=0,
+                microsecond=0
+            )
+        else:  # 下午时段
+            actual_minutes = (period_start_minutes - 120) + (13 * 60)
+            return timestamp.replace(
+                hour=actual_minutes // 60,
+                minute=actual_minutes % 60,
+                second=0,
+                microsecond=0
+            )
 
     def _update_candle(self, code: str, period: int, timestamp: datetime, 
                       price: float, volume: float, amount: float):
@@ -105,10 +138,15 @@ class CandleManager(threading.Thread):
             current_candle.amount += amount
     
     def _save_candle(self, candle: Candle):
-        """保存K线到数据库"""
+        """保存K线到数据库并通知相应的分析器"""
         try:
             self.db_manager.save_candle(candle)
             self.logger.debug(f"K线已保存: {candle.code} {candle.period}分钟 {candle.timestamp}")
+            
+            # 通知该周期的所有分析器
+            for analyzer in self._analyzers[candle.period]:
+                analyzer.on_price_update(candle.code, candle)
+                
         except Exception as e:
             self.logger.error(f"保存K线失败: {str(e)}")
 
@@ -166,3 +204,8 @@ class CandleManager(threading.Thread):
             
         except Exception as e:
             self.logger.error(f"检查缺失K线时出错: {str(e)}")
+
+    def register_analyzer(self, period: int, analyzer: HubAnalyzer):
+        """注册一个特定周期的分析器"""
+        self._analyzers[period].append(analyzer)
+        self.logger.info(f"注册了{period}分钟级别的分析器")

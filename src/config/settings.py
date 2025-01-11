@@ -30,4 +30,4 @@ EMAIL_CONFIG = {
 }
 
 # K线周期配置（分钟）
-CANDLE_PERIODS = [1, 5, 15, 30]
+CANDLE_PERIODS = [1, 5, 15, 30, 60, 120, 240]

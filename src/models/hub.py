@@ -43,3 +43,7 @@ class Hub:
     def range(self) -> PriceRange:
         """获取中枢范围"""
         return PriceRange(high=self.zg, low=self.zd)
+    
+
+    def __str__(self):
+        return f"Hub(start_time='{self.start_time}', end_time='{self.end_time}', zg={self.zg}, zd={self.zd}, hub_type={self.hub_type}, strength={self.strength})"

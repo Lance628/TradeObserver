@@ -9,6 +9,8 @@ from ....database.database import DatabaseManager
 
 class HubAnalyzer(RealTimeAnalyzer):
     def __init__(self, 
+                 code: str,
+                 period: int,
                  min_candles_for_hub: int = 12,
                  overlap_threshold: float = 0.6,
                  hub_break_threshold: float = 0.3):
@@ -20,8 +22,8 @@ class HubAnalyzer(RealTimeAnalyzer):
         self.current_hub: Optional[Hub] = None
         self.candles: List[Candle] = []
         self.active_hubs: List[Hub] = []
-        self.current_code: Optional[str] = None
-        
+        self.current_code: Optional[str] = code
+        self.period: int = period
         self.email_notifier = EmailNotifier()
         self.db_manager = DatabaseManager()
         
@@ -32,6 +34,7 @@ class HubAnalyzer(RealTimeAnalyzer):
         """从数据库恢复最近的K线数据和中枢状态"""
         try:
             if not self.current_code:
+                self.logger.info(f"未找到当前代码{self.current_code}，无法从数据库恢复数据")
                 return
                 
             # 获取最近30根1分钟K线
@@ -47,12 +50,11 @@ class HubAnalyzer(RealTimeAnalyzer):
                 
             # 更新K线列表
             self.candles = latest_candles
-            
             # 尝试在最近的K线中找到中枢
             potential_hub = self._find_hub_in_candles(
                 self.candles[-self.min_candles_for_hub:]
             )
-            
+            print(potential_hub)
             if potential_hub:
                 self.current_hub = potential_hub
                 self.active_hubs.append(potential_hub)
@@ -61,17 +63,16 @@ class HubAnalyzer(RealTimeAnalyzer):
         except Exception as e:
             self.logger.error(f"从数据库恢复数据失败: {str(e)}")
     
-    def on_price_update(self, code: str, price_data: dict):
-        """接收价格更新，将数据放入队列"""
+    def on_price_update(self, code: str, candle: Candle):
+        """接收K线更新"""
         self._analysis_queue.put({
             'code': code,
-            'price_data': price_data,
+            'candle': candle,
             'timestamp': datetime.now()
         })
     
     def analyze_data(self, data: dict):
         """处理队列中的数据"""
-        self.current_code = data['code']
         self._perform_analysis()
     
     def _perform_analysis(self):
@@ -157,7 +158,6 @@ class HubAnalyzer(RealTimeAnalyzer):
         """在一组K线中寻找中枢"""
         if len(candles) < self.min_candles_for_hub:
             return None
-            
         # 将K线分成三段来寻找重叠区域
         segment_size = len(candles) // 3
         seg1 = candles[:segment_size]
@@ -233,7 +233,8 @@ class HubAnalyzer(RealTimeAnalyzer):
 中枢类型: {hub.hub_type.value}
 中枢上沿: {hub.zg:.3f}
 中枢下沿: {hub.zd:.3f}
-形成时间: {hub.start_time.strftime('%Y-%m-%d %H:%M:%S')}
+形成时间: {hub.start_time}
+最后更新时间: {hub.end_time}
 中枢强度: {hub.strength}
 
 价格区间: {hub.zd:.3f} - {hub.zg:.3f}
@@ -257,9 +258,10 @@ class HubAnalyzer(RealTimeAnalyzer):
 
 突破价格: {break_price:.3f}
 原中枢区间: {hub.zd:.3f} - {hub.zg:.3f}
-中枢持续时间: {(hub.end_time - hub.start_time).seconds // 60}分钟
 中枢类型: {hub.hub_type.value}
 """
+# 中枢持续时间: {(hub.end_time - hub.start_time).seconds // 60}分钟
+        
         if not self.email_notifier.send_notification(subject, content):
             self.logger.info(f"中枢突破通知未发送（已达到每日限制）: {direction}突破")
     

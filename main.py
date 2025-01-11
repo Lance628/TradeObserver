@@ -27,20 +27,38 @@ def main():
     # 确保邮件配置正确
     assert all(EMAIL_CONFIG.values()), "请先配置邮件设置"
     
+
+    
+    # 创建中枢分析器
+    # hub_analyzer = HubAnalyzer(
+    #     code="588200",
+    #     min_candles_for_hub=12,
+    #     overlap_threshold=0.6,
+    #     hub_break_threshold=0.3
+    # )
+    # # 启动分析器
+    # hub_analyzer.start()
+    
     # 创建并启动K线管理器
     candle_manager = CandleManager()
     candle_manager.start()
-    
-    # 创建中枢分析器
-    hub_analyzer = HubAnalyzer(
-        min_candles_for_hub=12,
-        overlap_threshold=0.6,
-        hub_break_threshold=0.3
-    )
-    
-    # 启动分析器
-    hub_analyzer.start()
-    
+
+    hub_analyzer_list = []
+
+    # 为每个周期创建对应的分析器并注册
+    for period in CANDLE_PERIODS:
+        for code in ETF_CODES:
+            # 可以为不同周期设置不同的参数
+            analyzer = HubAnalyzer(
+                code=code,
+                period=period,
+                min_candles_for_hub=12 if period == 1 else 8,
+                overlap_threshold=0.6 if period == 1 else 0.7,
+                hub_break_threshold=0.3
+            )
+            analyzer.start()
+            candle_manager.register_analyzer(period, analyzer)
+            hub_analyzer_list.append(analyzer)
     # analyzer_manager.add_realtime_analyzer(hub_analyzer)
     # analyzer_manager.start()
     
@@ -83,7 +101,7 @@ def main():
                         )
                         
                         # 将数据放入分析队列
-                        hub_analyzer.on_price_update(code, price_data)
+                        # hub_analyzer.on_price_update(code, price_data)
                         
                         logger.info(f"{code}: 价格={price_data['price']}, "
                                   f"成交量={price_data['volume']}")
@@ -100,7 +118,8 @@ def main():
         raise
     finally:
         # 停止所有组件
-        hub_analyzer.stop()
+        for analyzer in hub_analyzer_list:
+            analyzer.stop()
         candle_manager.stop()
         candle_manager.join()  # 等待K线管理器线程结束
 

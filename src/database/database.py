@@ -36,7 +36,6 @@ class DatabaseManager:
             # 创建K线数据表
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS candles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp DATETIME NOT NULL,
                     code TEXT NOT NULL,
                     period INTEGER NOT NULL,
@@ -46,7 +45,8 @@ class DatabaseManager:
                     close REAL NOT NULL,
                     volume REAL NOT NULL,
                     amount REAL NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (timestamp, code, period)
                 )
             ''')
             
