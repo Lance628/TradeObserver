@@ -53,15 +53,15 @@ class CandleManager(threading.Thread):
         """处理实时价格更新"""
         self._price_queue.put((code, timestamp, price, volume, amount))
 
-    def _get_period_start_time(self, timestamp: datetime, period: int) -> datetime:
-        """计算A股市场K线周期的开始时间
+    def _get_period_end_time(self, timestamp: datetime, period: int) -> datetime:
+        """计算A股市场K线周期的结束时间
         
         Args:
             timestamp: 当前时间戳
             period: K线周期（分钟）
             
         Returns:
-            datetime: 当前K线的开始时间
+            datetime: 当前K线的结束时间
         """
         # 转换为当日分钟数
         hour, minute = timestamp.hour, timestamp.minute
@@ -83,12 +83,12 @@ class CandleManager(threading.Thread):
             # 收盘后，使用最后一个周期
             total_minutes = 240  # 全天交易分钟数
         
-        # 计算当前周期的开始分钟数
-        period_start_minutes = (total_minutes // period) * period
+        # 计算当前周期的结束分钟数
+        period_end_minutes = ((total_minutes + period) // period) * period
         
-        # 将周期开始分钟数转换回实际时间
-        if period_start_minutes < 120:  # 上午时段
-            actual_minutes = period_start_minutes + (9 * 60 + 30)
+        # 将周期结束分钟数转换回实际时间
+        if period_end_minutes <= 120:  # 上午时段
+            actual_minutes = period_end_minutes + (9 * 60 + 30)
             return timestamp.replace(
                 hour=actual_minutes // 60,
                 minute=actual_minutes % 60,
@@ -96,7 +96,7 @@ class CandleManager(threading.Thread):
                 microsecond=0
             )
         else:  # 下午时段
-            actual_minutes = (period_start_minutes - 120) + (13 * 60)
+            actual_minutes = (period_end_minutes - 120) + (13 * 60)
             return timestamp.replace(
                 hour=actual_minutes // 60,
                 minute=actual_minutes % 60,
@@ -107,18 +107,18 @@ class CandleManager(threading.Thread):
     def _update_candle(self, code: str, period: int, timestamp: datetime, 
                       price: float, volume: float, amount: float):
         """更新指定周期的K线"""
-        period_start = self._get_period_start_time(timestamp, period)
+        period_end = self._get_period_end_time(timestamp, period)
         candle_key = (code, period)
         
         if candle_key not in self._candles or \
-           self._candles[candle_key].timestamp != period_start:
+           self._candles[candle_key].timestamp != period_end:
             # 保存旧的K线
             if candle_key in self._candles:
                 self._save_candle(self._candles[candle_key])
             
             # 创建新的K线
             self._candles[candle_key] = Candle(
-                timestamp=period_start,
+                timestamp=period_end,  # 使用结束时间作为时间戳
                 code=code,
                 period=period,
                 open=price,
@@ -145,7 +145,7 @@ class CandleManager(threading.Thread):
             
             # 通知该周期的所有分析器
             for analyzer in self._analyzers[candle.period]:
-                analyzer.on_price_update(candle.code, candle)
+                analyzer.on_candle_update(candle.code, candle)
                 
         except Exception as e:
             self.logger.error(f"保存K线失败: {str(e)}")

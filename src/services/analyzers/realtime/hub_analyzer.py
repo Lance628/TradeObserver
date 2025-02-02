@@ -63,7 +63,7 @@ class HubAnalyzer(RealTimeAnalyzer):
         except Exception as e:
             self.logger.error(f"从数据库恢复数据失败: {str(e)}")
     
-    def on_price_update(self, code: str, candle: Candle):
+    def on_candle_update(self, code: str, candle: Candle):
         """接收K线更新"""
         self._analysis_queue.put({
             'code': code,
@@ -78,7 +78,7 @@ class HubAnalyzer(RealTimeAnalyzer):
     def _perform_analysis(self):
         """执行具体的分析逻辑"""
         # 获取最新K线数据
-        latest_candles = self.get_latest_candles(limit=30)
+        latest_candles = self.get_latest_candles(limit=30, period=self.period)
         if not latest_candles:
             return
             
@@ -121,7 +121,7 @@ class HubAnalyzer(RealTimeAnalyzer):
                 self.current_hub.end_time = latest_candles[-1].timestamp
                 self.current_hub.strength += 1
     
-    def get_latest_candles(self, limit: int = 30) -> List[Candle]:
+    def get_latest_candles(self, limit: int = 30, period: int = 1) -> List[Candle]:
         """从数据库获取最新的K线数据"""
         try:
             if not self.current_code:
@@ -130,15 +130,15 @@ class HubAnalyzer(RealTimeAnalyzer):
             # 直接从数据库获取1分钟K线数据
             latest_candles = self.db_manager.get_candles(
                 code=self.current_code,
-                period=1,  # 固定获取1分钟K线
+                period=period, 
                 limit=limit
             )
             
             if not latest_candles:
-                self.logger.debug(f"未找到最新K线数据")
+                self.logger.error(f"未找到最新{self.period}分钟K线数据")
                 return []
             
-            self.logger.debug(f"获取到 {len(latest_candles)} 根K线数据")
+            self.logger.info(f"获取到 {len(latest_candles)} 根{self.period}分钟K线数据")
             return latest_candles
             
         except Exception as e:
@@ -228,7 +228,7 @@ class HubAnalyzer(RealTimeAnalyzer):
     def _format_hub_notification(self, hub: Hub) -> str:
         """格式化中枢通知内容"""
         return f"""
-发现新的一分钟级别中枢：
+发现新的{self.period}分钟级别中枢：
 
 中枢类型: {hub.hub_type.value}
 中枢上沿: {hub.zg:.3f}
@@ -252,13 +252,14 @@ class HubAnalyzer(RealTimeAnalyzer):
     def _notify_hub_break(self, hub: Hub, break_price: float):
         """发送中枢突破通知"""
         direction = "向上" if break_price > hub.zg else "向下"
-        subject = f"中枢突破通知 - {direction}突破"
+        subject = f"中枢突破通知 - {direction}突破{self.period}分钟中枢"
         content = f"""
-中枢被{direction}突破：
+{self.period}分钟中枢被{direction}突破：
 
 突破价格: {break_price:.3f}
 原中枢区间: {hub.zd:.3f} - {hub.zg:.3f}
 中枢类型: {hub.hub_type.value}
+中枢强度: {hub.strength}
 """
 # 中枢持续时间: {(hub.end_time - hub.start_time).seconds // 60}分钟
         
