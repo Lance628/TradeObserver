@@ -40,8 +40,8 @@ class HubAnalyzer(RealTimeAnalyzer):
             # 获取最近30根1分钟K线
             latest_candles = self.db_manager.get_candles(
                 code=self.current_code,
-                period=1,
-                limit=30
+                period=self.period,
+                limit=100000
             )
             
             if not latest_candles:
@@ -179,7 +179,11 @@ class HubAnalyzer(RealTimeAnalyzer):
             
         # 计算重叠区域占比
         total_range = self._get_price_range(candles)
-        overlap_ratio = (overlap123.high - overlap123.low) / (total_range.high - total_range.low)
+        # print(candles[0].timestamp, candles[-1].timestamp, total_range)
+        if total_range.high != total_range.low: 
+            overlap_ratio = (overlap123.high - overlap123.low) / (total_range.high - total_range.low)
+        else:
+            overlap_ratio = 1
         
         if overlap_ratio < self.overlap_threshold:
             return None
@@ -279,5 +283,278 @@ class HubAnalyzer(RealTimeAnalyzer):
             "strength": self.current_hub.strength,
             "duration": (self.current_hub.end_time - self.current_hub.start_time).seconds // 60
         }
+    
+    def backtest(self, 
+                historical_candles: List[Candle], 
+                initial_capital: float = 100000.0,
+                additional_take_profit: float = 0.01,  # 追加仓位止盈比例
+                additional_stop_loss: float = -0.01,   # 追加仓位止损比例
+                reduction_success: float = -0.01,      # 减仓成功回补比例
+                reduction_fail: float = 0.01          # 减仓失败回补比例
+                ) -> dict:
+        """
+        回测中枢分析策略
+        
+        交易策略：
+        1. 第一根K线开盘时建立80%仓位（不设止盈止损）
+        2. 向上突破时买入剩余资金的20%：
+           - 上涨1%时卖出（止盈）
+           - 下跌1%时卖出（止损）
+           - 只允许一次追加仓位
+        3. 向下跌破时减仓初始仓位的25%：
+           - 下跌超过1%时买回（成功）
+           - 上涨超过1%时买回（失败）
+           - 只允许一次减仓操作
+
+        Args:
+            historical_candles: 历史K线数据
+            initial_capital: 初始资金
+            additional_take_profit: 追加仓位止盈比例，默认1%
+            additional_stop_loss: 追加仓位止损比例，默认-1%
+            reduction_success: 减仓成功回补比例，默认-1%
+            reduction_fail: 减仓失败回补比例，默认1%
+        """
+        self.candles = []
+        self.current_hub = None
+        self.active_hubs = []
+        
+        # 回测状态
+        position = 0  # 持仓数量
+        capital = initial_capital  # 当前资金
+        trades = []  # 交易记录
+        
+        # 分别记录初始持仓和追加持仓
+        initial_position = 0  # 初始持仓数量
+        initial_cost = 0  # 初始持仓成本
+        # 追加仓位状态
+        has_additional_position = False  # 是否已经进行过追加仓位
+        additional_position_info = None  # (买入价格, 持仓数量) 追加仓位记录
+        
+        # 减仓状态跟踪
+        has_reduced_position = False  # 是否已经进行过减仓
+        reduced_position_info = None  # (减仓价格, 减仓数量, 减仓金额)
+        
+        # 第一根K线建仓
+        first_candle = historical_candles[0]
+        initial_position = int(initial_capital * 0.8 / first_candle.open)  # 80%仓位
+        if initial_position > 0:
+            position = initial_position
+            initial_cost = initial_position * first_candle.open
+            capital -= initial_cost
+            trades.append({
+                'time': first_candle.timestamp,
+                'type': '买入',
+                'price': first_candle.open,
+                'shares': initial_position,
+                'reason': '初始建仓(80%)'
+            })
+        
+        # 模拟真实环境逐K线分析
+        for i, candle in enumerate(historical_candles[1:], 1):
+            # 更新K线数据
+            self.candles.append(candle)
+            if len(self.candles) > 100:
+                self.candles = self.candles[-100:]
+                
+            current_price = candle.close
+            
+            # 检查减仓回补条件
+            if reduced_position_info is not None:
+                reduce_price, reduce_shares, reduce_amount = reduced_position_info
+                price_change_ratio = (current_price - reduce_price) / reduce_price
+                
+                # 下跌回补，成功
+                if price_change_ratio <= reduction_success:
+                    shares_to_buy = int(reduce_amount / current_price)
+                    cost = shares_to_buy * current_price
+                    if cost <= reduce_amount:
+                        position += shares_to_buy
+                        capital -= cost
+                        effective_shares = min(reduce_shares, shares_to_buy)
+                        trades.append({
+                            'time': candle.timestamp,
+                            'type': '买入',
+                            'price': current_price,
+                            'shares': shares_to_buy,
+                            'reason': f'[减仓][成功] 下跌回补 {price_change_ratio:.2%}',
+                            'pnl': effective_shares * (reduce_price - current_price)
+                        })
+                        reduced_position_info = None
+                        has_reduced_position = False
+                
+                # 上涨回补，失败
+                elif price_change_ratio >= reduction_fail:
+                    shares_to_buy = int(reduce_amount / current_price)
+                    cost = shares_to_buy * current_price
+                    if cost <= reduce_amount:
+                        position += shares_to_buy
+                        capital -= cost
+                        effective_shares = min(reduce_shares, shares_to_buy)
+                        trades.append({
+                            'time': candle.timestamp,
+                            'type': '买入',
+                            'price': current_price,
+                            'shares': shares_to_buy,
+                            'reason': f'[减仓][失败] 上涨回补 {price_change_ratio:.2%}',
+                            'pnl': effective_shares * (reduce_price - current_price)
+                        })
+                        reduced_position_info = None
+                        has_reduced_position = False
+            
+            # 检查追加仓位的止盈止损
+            if additional_position_info is not None:
+                entry_price, shares = additional_position_info
+                profit_ratio = (current_price - entry_price) / entry_price
+                
+                # 止盈逻辑
+                if profit_ratio >= additional_take_profit:
+                    capital += shares * current_price
+                    position -= shares
+                    trades.append({
+                        'time': candle.timestamp,
+                        'type': '卖出',
+                        'price': current_price,
+                        'shares': shares,
+                        'reason': f'[追加仓位][成功] 止盈 {profit_ratio:.2%}',
+                        'buy_price': entry_price,
+                        'pnl': shares * (current_price - entry_price)
+                    })
+                    additional_position_info = None
+                    has_additional_position = False
+                
+                # 止损逻辑
+                elif profit_ratio <= additional_stop_loss:
+                    capital += shares * current_price
+                    position -= shares
+                    trades.append({
+                        'time': candle.timestamp,
+                        'type': '卖出',
+                        'price': current_price,
+                        'shares': shares,
+                        'reason': f'[追加仓位][失败] 止损 {profit_ratio:.2%}',
+                        'buy_price': entry_price,
+                        'pnl': shares * (current_price - entry_price)
+                    })
+                    additional_position_info = None
+                    has_additional_position = False
+            
+            # 中枢分析和交易逻辑
+            if not self.current_hub:
+                if len(self.candles) >= self.min_candles_for_hub:
+                    potential_hub = self._find_hub_in_candles(
+                        self.candles[-self.min_candles_for_hub:]
+                    )
+                    if potential_hub:
+                        self.current_hub = potential_hub
+                        self.active_hubs.append(potential_hub)
+                        
+            # 如果有活跃中枢，检查是否突破
+            elif self._is_price_breaking_hub(current_price, self.current_hub):
+                if current_price > self.current_hub.zg and not has_additional_position:
+                    # 向上突破时买入剩余资金
+                    available_capital = capital
+                    if available_capital >= current_price:
+                        shares = int(available_capital / current_price)
+                        cost = shares * current_price
+                        if cost <= capital:
+                            position += shares
+                            capital -= cost
+                            has_additional_position = True
+                            additional_position_info = (current_price, shares)
+                            trades.append({
+                                'time': candle.timestamp,
+                                'type': '买入',
+                                'price': current_price,
+                                'shares': shares,
+                                'reason': '向上突破追加20%仓位'
+                            })
+                
+                elif current_price < self.current_hub.zd and not has_reduced_position:
+                    # 向下跌破时减仓初始仓位的25%
+                    reduce_shares = int(initial_position * 0.25)
+                    if reduce_shares > 0:
+                        position -= reduce_shares
+                        reduce_amount = reduce_shares * current_price
+                        capital += reduce_amount
+                        has_reduced_position = True
+                        reduced_position_info = (current_price, reduce_shares, reduce_amount)
+                        trades.append({
+                            'time': candle.timestamp,
+                            'type': '卖出',
+                            'price': current_price,
+                            'shares': reduce_shares,
+                            'reason': '向下突破减仓25%',
+                            'sell_amount': reduce_amount  # 记录卖出金额
+                        })
+                
+                self.current_hub = None
+            else:
+                # 更新当前中枢
+                self.current_hub.end_time = candle.timestamp
+                self.current_hub.strength += 1
+        
+        # 回测结束，清算所有持仓
+        if position > 0:
+            final_price = historical_candles[-1].close
+            capital += position * final_price
+            trades.append({
+                'time': historical_candles[-1].timestamp,
+                'type': '卖出',
+                'price': final_price,
+                'shares': position,
+                'reason': '回测结束清仓'
+            })
+        
+        # 计算回测结果
+        final_value = capital
+        total_return = (final_value - initial_capital) / initial_capital * 100
+        
+        # 计算最大回撤
+        max_drawdown = self._calculate_max_drawdown(trades, historical_candles)
+        
+        return {
+            'initial_capital': initial_capital,
+            'final_value': final_value,
+            'total_return': total_return,
+            'total_trades': len(trades),
+            'max_drawdown': max_drawdown,
+            'trades': trades
+        }
+    
+    def _calculate_max_drawdown(self, trades: List[dict], candles: List[Candle]) -> float:
+        """计算最大回撤"""
+        if not trades:
+            return 0.0
+            
+        portfolio_values = []
+        current_position = 0
+        current_capital = trades[0]['price'] * trades[0]['shares']  # 假设第一笔交易是买入
+        
+        for candle in candles:
+            # 更新持仓信息
+            for trade in trades:
+                if trade['time'] == candle.timestamp:
+                    if trade['type'] == '买入':
+                        current_position += trade['shares']
+                        current_capital -= trade['shares'] * trade['price']
+                    else:  # 卖出
+                        current_position -= trade['shares']
+                        current_capital += trade['shares'] * trade['price']
+            
+            # 计算当前市值
+            portfolio_value = current_capital + (current_position * candle.close)
+            portfolio_values.append(portfolio_value)
+        
+        # 计算最大回撤
+        max_drawdown = 0
+        peak = portfolio_values[0]
+        
+        for value in portfolio_values:
+            if value > peak:
+                peak = value
+            drawdown = (peak - value) / peak
+            max_drawdown = max(max_drawdown, drawdown)
+        
+        return max_drawdown * 100  # 转换为百分比
     
     
