@@ -7,7 +7,7 @@ from src.services.analyzers.realtime.hub_analyzer import HubAnalyzer
 from src.database.database import DatabaseManager
 from src.utils.time_utils import is_trading_time, get_market_status, get_next_trading_time, get_seconds_to_next_check
 from src.utils.logger import setup_logger
-from src.config.settings import ETF_CODES, FETCH_INTERVAL, EMAIL_CONFIG, CANDLE_PERIODS
+from src.config.settings import ETF_CODES, FETCH_INTERVAL, EMAIL_CONFIG, CANDLE_PERIODS, HUB_ANALYZER_PARAMS, DEFAULT_HUB_ANALYZER_PARAMS
 from src.services.analyzers.analyzer_manager import AnalyzerManager
 from src.services.analyzers.realtime.hub_analyzer import HubAnalyzer
 
@@ -48,16 +48,17 @@ def main():
     # 为每个周期创建对应的分析器并注册
     for period in CANDLE_PERIODS:
         for code in ETF_CODES:
-            # 可以为不同周期设置不同的参数
+            # 获取特定代码和周期的参数配置，如果没有则使用默认值
+            params = (HUB_ANALYZER_PARAMS.get(code, {})
+                     .get(period, DEFAULT_HUB_ANALYZER_PARAMS))
+            
             analyzer = HubAnalyzer(
                 code=code,
                 period=period,
-                min_candles_for_hub=12 if period == 1 else 8,
-                overlap_threshold=0.6 if period == 1 else 0.7,
-                hub_break_threshold=0.3
+                **params  # 使用配置的参数
             )
             analyzer.start()
-            candle_manager.register_analyzer(period, analyzer)
+            candle_manager.register_analyzer(code, period, analyzer)
             hub_analyzer_list.append(analyzer)
     # analyzer_manager.add_realtime_analyzer(hub_analyzer)
     # analyzer_manager.start()

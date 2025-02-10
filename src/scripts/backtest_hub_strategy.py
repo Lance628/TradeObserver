@@ -189,190 +189,190 @@ def run_backtest(
     
     return all_results
 
-def find_best_params(all_results: List[Dict]) -> Tuple[Dict, List[Dict]]:
-    """
-    根据所有股票的回测结果找出最优参数组合（基于超额收益率）
-    """
-    # 按参数组合对结果进行分组
-    params_performance = {}
+# def find_best_params(all_results: List[Dict]) -> Tuple[Dict, List[Dict]]:
+#     """
+#     根据所有股票的回测结果找出最优参数组合（基于超额收益率）
+#     """
+#     # 按参数组合对结果进行分组
+#     params_performance = {}
     
-    for result in all_results:
-        # 将参数转换为可哈希的元组形式作为键
-        params_key = tuple(sorted(result['params'].items()))
+#     for result in all_results:
+#         # 将参数转换为可哈希的元组形式作为键
+#         params_key = tuple(sorted(result['params'].items()))
         
-        # 计算超额收益（相对于区间涨跌幅的绝对差值）
-        excess_return = result['total_return'] - result['period_return']
+#         # 计算超额收益（相对于区间涨跌幅的绝对差值）
+#         excess_return = result['total_return'] - result['period_return']
         
-        if params_key not in params_performance:
-            params_performance[params_key] = {
-                'excess_returns': [],
-                'params': result['params'],
-                'stock_performances': []  # 新增：记录每只股票的表现
-            }
+#         if params_key not in params_performance:
+#             params_performance[params_key] = {
+#                 'excess_returns': [],
+#                 'params': result['params'],
+#                 'stock_performances': []  # 新增：记录每只股票的表现
+#             }
         
-        params_performance[params_key]['excess_returns'].append(excess_return)
-        # 新增：保存股票详细表现
-        params_performance[params_key]['stock_performances'].append({
-            'code': result['code'],
-            'period': result['period'],
-            'total_return': result['total_return'],
-            'period_return': result['period_return'],
-            'excess_return': excess_return
-        })
+#         params_performance[params_key]['excess_returns'].append(excess_return)
+#         # 新增：保存股票详细表现
+#         params_performance[params_key]['stock_performances'].append({
+#             'code': result['code'],
+#             'period': result['period'],
+#             'total_return': result['total_return'],
+#             'period_return': result['period_return'],
+#             'excess_return': excess_return
+#         })
     
-    # 计算每个参数组合的平均超额收益
-    for perf in params_performance.values():
-        perf['avg_excess_return'] = sum(perf['excess_returns']) / len(perf['excess_returns'])
+#     # 计算每个参数组合的平均超额收益
+#     for perf in params_performance.values():
+#         perf['avg_excess_return'] = sum(perf['excess_returns']) / len(perf['excess_returns'])
     
-    # 找出平均超额收益最大的参数组合
-    best_params_data = max(
-        params_performance.values(),
-        key=lambda x: x['avg_excess_return']
-    )
+#     # 找出平均超额收益最大的参数组合
+#     best_params_data = max(
+#         params_performance.values(),
+#         key=lambda x: x['avg_excess_return']
+#     )
     
-    # 打印最优参数下各股票的表现
-    print("\n====== 最优参数下各股票表现（超额收益率） ======")
-    print(f"平均超额收益: {best_params_data['avg_excess_return']:.2f}%")
-    print("\n各股票具体表现:")
-    print("股票代码  周期  总收益率    区间涨跌幅  超额收益  总交易次数  成功交易  胜率   收益金额")
-    print("-" * 90)
+#     # 打印最优参数下各股票的表现
+#     print("\n====== 最优参数下各股票表现（超额收益率） ======")
+#     print(f"平均超额收益: {best_params_data['avg_excess_return']:.2f}%")
+#     print("\n各股票具体表现:")
+#     print("股票代码  周期  总收益率    区间涨跌幅  超额收益  总交易次数  成功交易  胜率   收益金额")
+#     print("-" * 90)
     
-    # 按超额收益排序
-    sorted_performances = sorted(
-        best_params_data['stock_performances'],
-        key=lambda x: x['excess_return'],
-        reverse=True
-    )
-    # TODO: 这里有问题
-    for perf in sorted_performances[:1]:
-        successful_trades = sum(1 for t in result['trades'] 
-                              if t.get('pnl', 0) > 0 and 
-                              '初始建仓' not in t.get('reason', '') and 
-                              '回测结束清仓' not in t.get('reason', ''))
-        total_trades = sum(1 for t in result['trades'] 
-                          if '初始建仓' not in t.get('reason', '') and 
-                          '回测结束清仓' not in t.get('reason', ''))
-        win_rate = successful_trades / total_trades * 100 if total_trades > 0 else 0
-        total_profit = sum(t.get('pnl', 0) for t in result['trades'])
+#     # 按超额收益排序
+#     sorted_performances = sorted(
+#         best_params_data['stock_performances'],
+#         key=lambda x: x['excess_return'],
+#         reverse=True
+#     )
+#     # TODO: 这里有问题
+#     for perf in sorted_performances[:1]:
+#         successful_trades = sum(1 for t in result['trades'] 
+#                               if t.get('pnl', 0) > 0 and 
+#                               '初始建仓' not in t.get('reason', '') and 
+#                               '回测结束清仓' not in t.get('reason', ''))
+#         total_trades = sum(1 for t in result['trades'] 
+#                           if '初始建仓' not in t.get('reason', '') and 
+#                           '回测结束清仓' not in t.get('reason', ''))
+#         win_rate = successful_trades / total_trades * 100 if total_trades > 0 else 0
+#         total_profit = sum(t.get('pnl', 0) for t in result['trades'])
         
-        print(f"{perf['code']}  {perf['period']}分钟  "
-              f"{perf['total_return']:8.2f}%  "
-              f"{perf['period_return']:8.2f}%  "
-              f"{perf['excess_return']:8.2f}%  "
-              f"{total_trades:8d}  "
-              f"{successful_trades:8d}  "
-              f"{win_rate:6.2f}%  "
-              f"{total_profit:10,.2f}")
+#         print(f"{perf['code']}  {perf['period']}分钟  "
+#               f"{perf['total_return']:8.2f}%  "
+#               f"{perf['period_return']:8.2f}%  "
+#               f"{perf['excess_return']:8.2f}%  "
+#               f"{total_trades:8d}  "
+#               f"{successful_trades:8d}  "
+#               f"{win_rate:6.2f}%  "
+#               f"{total_profit:10,.2f}")
         
-        # 更新性能数据
-        perf.update({
-            'total_trades': total_trades,
-            'successful_trades': successful_trades,
-            'win_rate': win_rate,
-            'profit_amount': total_profit
-        })
+#         # 更新性能数据
+#         perf.update({
+#             'total_trades': total_trades,
+#             'successful_trades': successful_trades,
+#             'win_rate': win_rate,
+#             'profit_amount': total_profit
+#         })
     
-    return best_params_data['params'], sorted_performances
+#     return best_params_data['params'], sorted_performances
 
-def find_best_params_by_profit_and_winrate(all_results: List[Dict]) -> Tuple[Dict, List[Dict]]:
-    """
-    根据所有股票的回测结果找出最优参数组合
-    评估指标 = 平均收益金额 * 平均交易成功率
+# def find_best_params_by_profit_and_winrate(all_results: List[Dict]) -> Tuple[Dict, List[Dict]]:
+#     """
+#     根据所有股票的回测结果找出最优参数组合
+#     评估指标 = 平均收益金额 * 平均交易成功率
     
-    Returns:
-        Tuple[Dict, List[Dict]]: (最优参数组合, 该参数组合下各股票的表现列表)
-    """
-    # 按参数组合对结果进行分组
-    params_performance = {}
+#     Returns:
+#         Tuple[Dict, List[Dict]]: (最优参数组合, 该参数组合下各股票的表现列表)
+#     """
+#     # 按参数组合对结果进行分组
+#     params_performance = {}
     
-    for result in all_results:
-        params_key = tuple(sorted(result['params'].items()))
+#     for result in all_results:
+#         params_key = tuple(sorted(result['params'].items()))
         
-        # 计算交易成功率和收益金额
-        successful_trades = 0
-        total_trades = 0
-        total_profit = 0
+#         # 计算交易成功率和收益金额
+#         successful_trades = 0
+#         total_trades = 0
+#         total_profit = 0
         
-        for trade in result['trades']:
-            if '初始建仓' in trade.get('reason', '') or '回测结束清仓' in trade.get('reason', ''):
-                continue
+#         for trade in result['trades']:
+#             if '初始建仓' in trade.get('reason', '') or '回测结束清仓' in trade.get('reason', ''):
+#                 continue
                 
-            total_trades += 1
-            pnl = trade.get('pnl', 0)
-            if pnl > 0:
-                successful_trades += 1
-            total_profit += pnl
+#             total_trades += 1
+#             pnl = trade.get('pnl', 0)
+#             if pnl > 0:
+#                 successful_trades += 1
+#             total_profit += pnl
         
-        win_rate = successful_trades / (total_trades/2) if total_trades > 0 else 0
-        profit_amount = total_profit
+#         win_rate = successful_trades / (total_trades/2) if total_trades > 0 else 0
+#         profit_amount = total_profit
         
-        if params_key not in params_performance:
-            params_performance[params_key] = {
-                'win_rates': [],
-                'profit_amounts': [],
-                'params': result['params'],
-                'stock_performances': []
-            }
+#         if params_key not in params_performance:
+#             params_performance[params_key] = {
+#                 'win_rates': [],
+#                 'profit_amounts': [],
+#                 'params': result['params'],
+#                 'stock_performances': []
+#             }
         
-        params_performance[params_key]['win_rates'].append(win_rate)
-        params_performance[params_key]['profit_amounts'].append(profit_amount)
-        params_performance[params_key]['stock_performances'].append({
-            'code': result['code'],
-            'period': result['period'],
-            'total_return': result['total_return'],
-            'period_return': result['period_return'],
-            'win_rate': win_rate * 100,  # 转换为百分比
-            'profit_amount': profit_amount,
-            'total_trades': total_trades,
-            'successful_trades': successful_trades
-        })
+#         params_performance[params_key]['win_rates'].append(win_rate)
+#         params_performance[params_key]['profit_amounts'].append(profit_amount)
+#         params_performance[params_key]['stock_performances'].append({
+#             'code': result['code'],
+#             'period': result['period'],
+#             'total_return': result['total_return'],
+#             'period_return': result['period_return'],
+#             'win_rate': win_rate * 100,  # 转换为百分比
+#             'profit_amount': profit_amount,
+#             'total_trades': total_trades,
+#             'successful_trades': successful_trades
+#         })
     
-    # 计算每个参数组合的平均表现
-    for perf in params_performance.values():
-        perf['avg_win_rate'] = sum(perf['win_rates']) / len(perf['win_rates'])
-        perf['avg_profit_amount'] = sum(perf['profit_amounts']) / len(perf['profit_amounts'])
-        # 评估指标 = 平均收益金额 * 平均胜率
-        perf['score'] = perf['avg_profit_amount'] * perf['avg_win_rate']
+#     # 计算每个参数组合的平均表现
+#     for perf in params_performance.values():
+#         perf['avg_win_rate'] = sum(perf['win_rates']) / len(perf['win_rates'])
+#         perf['avg_profit_amount'] = sum(perf['profit_amounts']) / len(perf['profit_amounts'])
+#         # 评估指标 = 平均收益金额 * 平均胜率
+#         perf['score'] = perf['avg_profit_amount'] * perf['avg_win_rate']
     
-    # 找出评估指标最高的参数组合
-    best_params_data = max(
-        params_performance.values(),
-        key=lambda x: x['score']
-    )
+#     # 找出评估指标最高的参数组合
+#     best_params_data = max(
+#         params_performance.values(),
+#         key=lambda x: x['score']
+#     )
     
-    # 打印最优参数下各股票的表现
-    print("\n====== 最优参数下各股票表现（收益金额*胜率） ======")
-    print(f"平均胜率: {best_params_data['avg_win_rate']*100:.2f}%")
-    print(f"平均收益金额: {best_params_data['avg_profit_amount']:,.2f}")
-    print(f"综合评分: {best_params_data['score']:,.2f}")
-    print("\n各股票具体表现:")
-    print("股票代码  周期  总收益率    区间涨跌幅  超额收益  胜率   收益金额    总交易次数  成功交易")
-    print("-" * 90)
+#     # 打印最优参数下各股票的表现
+#     print("\n====== 最优参数下各股票表现（收益金额*胜率） ======")
+#     print(f"平均胜率: {best_params_data['avg_win_rate']*100:.2f}%")
+#     print(f"平均收益金额: {best_params_data['avg_profit_amount']:,.2f}")
+#     print(f"综合评分: {best_params_data['score']:,.2f}")
+#     print("\n各股票具体表现:")
+#     print("股票代码  周期  总收益率    区间涨跌幅  超额收益  胜率   收益金额    总交易次数  成功交易")
+#     print("-" * 90)
     
-    # 按评估指标（收益金额*胜率）排序
-    sorted_performances = sorted(
-        best_params_data['stock_performances'],
-        key=lambda x: x['profit_amount'] * (x['win_rate']/100),
-        reverse=True
-    )
+#     # 按评估指标（收益金额*胜率）排序
+#     sorted_performances = sorted(
+#         best_params_data['stock_performances'],
+#         key=lambda x: x['profit_amount'] * (x['win_rate']/100),
+#         reverse=True
+#     )
     
-    for perf in sorted_performances:
-        # 计算超额收益
-        excess_return = perf['total_return'] - perf['period_return']
+#     for perf in sorted_performances:
+#         # 计算超额收益
+#         excess_return = perf['total_return'] - perf['period_return']
         
-        print(f"{perf['code']}  {perf['period']}分钟  "
-              f"{perf['total_return']:8.2f}%  "
-              f"{perf['period_return']:8.2f}%  "
-              f"{excess_return:8.2f}%  "
-              f"{perf['win_rate']:6.2f}%  "
-              f"{perf['profit_amount']:10,.2f}  "
-              f"{perf['total_trades']:8d}  "
-              f"{perf['successful_trades']:8d}")
+#         print(f"{perf['code']}  {perf['period']}分钟  "
+#               f"{perf['total_return']:8.2f}%  "
+#               f"{perf['period_return']:8.2f}%  "
+#               f"{excess_return:8.2f}%  "
+#               f"{perf['win_rate']:6.2f}%  "
+#               f"{perf['profit_amount']:10,.2f}  "
+#               f"{perf['total_trades']:8d}  "
+#               f"{perf['successful_trades']:8d}")
         
-        # 更新性能数据，添加超额收益
-        perf['excess_return'] = excess_return
+#         # 更新性能数据，添加超额收益
+#         perf['excess_return'] = excess_return
     
-    return best_params_data['params'], sorted_performances
+#     return best_params_data['params'], sorted_performances
 
 def plot_trading_results(candles: List[Candle], trades: List[Dict], code: str):
     """绘制交易结果图表"""
@@ -549,10 +549,10 @@ def generate_params_combinations():
     take_profit_range = [i * 0.002 for i in range(2, 8)]  # 0.01 到 0.035
     stop_loss_range = [i * -0.002 for i in range(2, 8)]   # -0.01 到 -0.035
     reduction_success_range = [i * -0.002 for i in range(2, 8)]  # -0.01 到 -0.035
-    reduction_success_range = [None]
+    # reduction_success_range = [None]
     reduction_fail_range = [i * 0.002 for i in range(2, 8)]      # 0.01 到 0.035
-    reduction_fail_range = [None]
-    min_candles_range = [4,5,6,7,8,9,10]  # 中枢形成所需K线数
+    # reduction_fail_range = [None]
+    min_candles_range = [4,5,6,7,8,9,10,11,12]  # 中枢形成所需K线数
     
     # 生成所有可能的组合
     for take_profit in take_profit_range:
@@ -635,15 +635,29 @@ def main():
 
 
     test_cases = [
-        # {
-        #     'code': '513130',  
-        #     'start_date': '2023-01-01',
-        #     'end_date': '2025-01-28',
-        #     'period': 1,
-        #     'initial_capital': 200000.0
-        # },
         {
             'code': '513130',  
+            'start_date': '2023-01-01',
+            'end_date': '2025-01-28',
+            'period': 1,
+            'initial_capital': 200000.0
+        },
+        {
+            'code': '513130',  
+            'start_date': '2023-01-01',
+            'end_date': '2025-01-28',
+            'period': 5,
+            'initial_capital': 200000.0
+        },
+        {
+            'code': '588200',  
+            'start_date': '2023-01-01',
+            'end_date': '2025-01-28',
+            'period': 1,
+            'initial_capital': 200000.0
+        },
+        {
+            'code': '588200',  
             'start_date': '2023-01-01',
             'end_date': '2025-01-28',
             'period': 5,
@@ -674,60 +688,60 @@ def main():
         )
         all_results.extend(results)
     
-    # 找出最优参数组合（两种方法）
-    print("\n====== 方法一：超额收益率优化 ======")
-    best_params_1, stock_performances_1 = find_best_params(all_results)
+    # # 找出最优参数组合（两种方法）
+    # print("\n====== 方法一：超额收益率优化 ======")
+    # best_params_1, stock_performances_1 = find_best_params(all_results)
     
-    print("\n====== 方法二：收益金额*胜率优化 ======")
-    best_params_2, stock_performances_2 = find_best_params_by_profit_and_winrate(all_results)
+    # print("\n====== 方法二：收益金额*胜率优化 ======")
+    # best_params_2, stock_performances_2 = find_best_params_by_profit_and_winrate(all_results)
     
-    print("\n====== 两种方法对比 ======")
-    print("方法一（超额收益率）最优参数：")
-    print(f"中枢形成K线数: {best_params_1['min_candles_for_hub']}")
-    if best_params_1['additional_take_profit'] is not None:
-        print(f"追加仓位止盈: {best_params_1['additional_take_profit']:.2%}")
-    if best_params_1['additional_stop_loss'] is not None:
-        print(f"追加仓位止损: {best_params_1['additional_stop_loss']:.2%}")
-    if best_params_1['reduction_success'] is not None:
-        print(f"减仓成功回补: {best_params_1['reduction_success']:.2%}")
-    if best_params_1['reduction_fail'] is not None:
-        print(f"减仓失败回补: {best_params_1['reduction_fail']:.2%}")
+    # print("\n====== 两种方法对比 ======")
+    # print("方法一（超额收益率）最优参数：")
+    # print(f"中枢形成K线数: {best_params_1['min_candles_for_hub']}")
+    # if best_params_1['additional_take_profit'] is not None:
+    #     print(f"追加仓位止盈: {best_params_1['additional_take_profit']:.2%}")
+    # if best_params_1['additional_stop_loss'] is not None:
+    #     print(f"追加仓位止损: {best_params_1['additional_stop_loss']:.2%}")
+    # if best_params_1['reduction_success'] is not None:
+    #     print(f"减仓成功回补: {best_params_1['reduction_success']:.2%}")
+    # if best_params_1['reduction_fail'] is not None:
+    #     print(f"减仓失败回补: {best_params_1['reduction_fail']:.2%}")
     
-    print("\n方法二（收益金额*胜率）最优参数：")
-    print(f"中枢形成K线数: {best_params_2['min_candles_for_hub']}")
-    if best_params_2['additional_take_profit'] is not None:
-        print(f"追加仓位止盈: {best_params_2['additional_take_profit']:.2%}")
-    if best_params_2['additional_stop_loss'] is not None:
-        print(f"追加仓位止损: {best_params_2['additional_stop_loss']:.2%}")
-    if best_params_2['reduction_success'] is not None:
-        print(f"减仓成功回补: {best_params_2['reduction_success']:.2%}")
-    if best_params_2['reduction_fail'] is not None:
-        print(f"减仓失败回补: {best_params_2['reduction_fail']:.2%}")
+    # print("\n方法二（收益金额*胜率）最优参数：")
+    # print(f"中枢形成K线数: {best_params_2['min_candles_for_hub']}")
+    # if best_params_2['additional_take_profit'] is not None:
+    #     print(f"追加仓位止盈: {best_params_2['additional_take_profit']:.2%}")
+    # if best_params_2['additional_stop_loss'] is not None:
+    #     print(f"追加仓位止损: {best_params_2['additional_stop_loss']:.2%}")
+    # if best_params_2['reduction_success'] is not None:
+    #     print(f"减仓成功回补: {best_params_2['reduction_success']:.2%}")
+    # if best_params_2['reduction_fail'] is not None:
+    #     print(f"减仓失败回补: {best_params_2['reduction_fail']:.2%}")
     
-    # 准备两种方法的结果，包含交易记录
-    method1_results = {
-        'params': best_params_1,
-        'performances': stock_performances_1,
-        'trades': {(perf['code'], perf['period']): result['trades'] 
-                  for result in all_results 
-                  for perf in stock_performances_1 
-                  if (result['code'] == perf['code'] and 
-                      result['period'] == perf['period'] and 
-                      result['params'] == best_params_1)}
-    }
+    # # 准备两种方法的结果，包含交易记录
+    # method1_results = {
+    #     'params': best_params_1,
+    #     'performances': stock_performances_1,
+    #     'trades': {(perf['code'], perf['period']): result['trades'] 
+    #               for result in all_results 
+    #               for perf in stock_performances_1 
+    #               if (result['code'] == perf['code'] and 
+    #                   result['period'] == perf['period'] and 
+    #                   result['params'] == best_params_1)}
+    # }
     
-    method2_results = {
-        'params': best_params_2,
-        'performances': stock_performances_2,
-        'trades': {(perf['code'], perf['period']): result['trades'] 
-                  for result in all_results 
-                  for perf in stock_performances_2 
-                  if (result['code'] == perf['code'] and 
-                      result['period'] == perf['period'] and 
-                      result['params'] == best_params_2)}
-    }
+    # method2_results = {
+    #     'params': best_params_2,
+    #     'performances': stock_performances_2,
+    #     'trades': {(perf['code'], perf['period']): result['trades'] 
+    #               for result in all_results 
+    #               for perf in stock_performances_2 
+    #               if (result['code'] == perf['code'] and 
+    #                   result['period'] == perf['period'] and 
+    #                   result['params'] == best_params_2)}
+    # }
     
-    save_results_to_excel(method1_results, method2_results)
+    # save_results_to_excel(method1_results, method2_results)
 
 if __name__ == "__main__":
     main() 

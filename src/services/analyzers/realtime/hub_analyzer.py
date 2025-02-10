@@ -6,6 +6,7 @@ from ..base_analyzer import RealTimeAnalyzer
 from ....utils.logger import setup_logger
 from ...notifiers.email_notifier import EmailNotifier
 from ....database.database import DatabaseManager
+from ....config.settings import HUB_BREAK_PARAMS, DEFAULT_HUB_BREAK_PARAMS
 
 class HubAnalyzer(RealTimeAnalyzer):
     def __init__(self, 
@@ -18,6 +19,14 @@ class HubAnalyzer(RealTimeAnalyzer):
         self.min_candles_for_hub = min_candles_for_hub
         self.overlap_threshold = overlap_threshold
         self.hub_break_threshold = hub_break_threshold
+        
+        # 获取突破参数配置
+        break_params = (HUB_BREAK_PARAMS.get(code, {})
+                       .get(period, DEFAULT_HUB_BREAK_PARAMS))
+        self.up_take_profit = break_params['up_take_profit']
+        self.up_stop_loss = break_params['up_stop_loss']
+        self.down_take_profit = break_params['down_take_profit']
+        self.down_stop_loss = break_params['down_stop_loss']
         
         self.current_hub: Optional[Hub] = None
         self.candles: List[Candle] = []
@@ -99,8 +108,9 @@ class HubAnalyzer(RealTimeAnalyzer):
                 self.candles.extend(new_candles)
                 if len(self.candles) > 100:
                     self.candles = self.candles[-100:]
-                self.logger.debug(f"添加了 {len(new_candles)} 根新K线")
+                self.logger.debug(f"代码{self.current_code}，周期{self.period}分钟，添加了 {len(new_candles)} 根新K线")
         
+
         # 中枢分析逻辑
         if not self.current_hub:
             self.current_hub = self._find_hub_in_candles(
@@ -108,13 +118,13 @@ class HubAnalyzer(RealTimeAnalyzer):
             )
             if self.current_hub:
                 self.active_hubs.append(self.current_hub)
-                self.logger.info(f"发现新中枢: {self.current_hub}")
+                self.logger.info(f"代码{self.current_code}，周期{self.period}分钟，发现新中枢: {self.current_hub}")
                 self._notify_new_hub(self.current_hub)
         
         elif self.current_hub:
             latest_price = latest_candles[-1].close
             if self._is_price_breaking_hub(latest_price, self.current_hub):
-                self.logger.info(f"中枢被突破: {self.current_hub}")
+                self.logger.info(f"代码{self.current_code}，周期{self.period}分钟，中枢被突破: {self.current_hub}")
                 self._notify_hub_break(self.current_hub, latest_price)
                 self.current_hub = None
             else:
@@ -127,12 +137,13 @@ class HubAnalyzer(RealTimeAnalyzer):
             if not self.current_code:
                 return []
                 
-            # 直接从数据库获取1分钟K线数据
+            # 直接从数据库获取对应周期的K线数据
             latest_candles = self.db_manager.get_candles(
                 code=self.current_code,
                 period=period, 
                 limit=limit
             )
+
             
             if not latest_candles:
                 self.logger.error(f"未找到最新{self.period}分钟K线数据")
@@ -247,7 +258,7 @@ class HubAnalyzer(RealTimeAnalyzer):
 
     def _notify_new_hub(self, hub: Hub):
         """发送新中枢通知"""
-        subject = f"新中枢形成通知 - {hub.hub_type.value}"
+        subject = f"新{self.period}分钟中枢形成通知 - {hub.hub_type.value}"
         content = self._format_hub_notification(hub)
         if not self.email_notifier.send_notification(subject, content):
             # 如果发送失败（达到限制），记录到日志
@@ -255,18 +266,28 @@ class HubAnalyzer(RealTimeAnalyzer):
     
     def _notify_hub_break(self, hub: Hub, break_price: float):
         """发送中枢突破通知"""
-        direction = "向上" if break_price > hub.zg else "向下"
-        subject = f"中枢突破通知 - {direction}突破{self.period}分钟中枢"
+        is_up_break = break_price > hub.zg
+        direction = "向上" if is_up_break else "向下"
+        
+        # 获取对应方向的止盈止损位置
+        take_profit = self.up_take_profit if is_up_break else self.down_take_profit
+        stop_loss = self.up_stop_loss if is_up_break else self.down_stop_loss
+        
+        # 计算具体价格
+        take_profit_price = break_price * (1 + take_profit)
+        stop_loss_price = break_price * (1 + stop_loss)
+        
+        subject = f"中枢突破通知 - {self.current_code} {direction}突破{self.period}分钟中枢"
         content = f"""
-{self.period}分钟中枢被{direction}突破：
+{self.current_code} {self.period}分钟中枢被{direction}突破：
 
 突破价格: {break_price:.3f}
+止盈位置: {take_profit_price:.3f} ({take_profit:+.2%})
+止损位置: {stop_loss_price:.3f} ({stop_loss:+.2%})
 原中枢区间: {hub.zd:.3f} - {hub.zg:.3f}
 中枢类型: {hub.hub_type.value}
 中枢强度: {hub.strength}
 """
-# 中枢持续时间: {(hub.end_time - hub.start_time).seconds // 60}分钟
-        
         if not self.email_notifier.send_notification(subject, content):
             self.logger.info(f"中枢突破通知未发送（已达到每日限制）: {direction}突破")
     
@@ -287,21 +308,21 @@ class HubAnalyzer(RealTimeAnalyzer):
     def backtest(self, 
                 historical_candles: List[Candle], 
                 initial_capital: float = 100000.0,
-                additional_take_profit: float = 0.01,  # 追加仓位止盈比例
-                additional_stop_loss: float = -0.01,   # 追加仓位止损比例
-                reduction_success: float = -0.01,      # 减仓成功回补比例
-                reduction_fail: float = 0.01          # 减仓失败回补比例
+                additional_take_profit: Optional[float] = 0.01,  # 追加仓位止盈比例
+                additional_stop_loss: Optional[float] = -0.01,   # 追加仓位止损比例
+                reduction_success: Optional[float] = -0.01,      # 减仓成功回补比例
+                reduction_fail: Optional[float] = 0.01          # 减仓失败回补比例
                 ) -> dict:
         """
         回测中枢分析策略
         
         交易策略：
         1. 第一根K线开盘时建立80%仓位（不设止盈止损）
-        2. 向上突破时买入剩余资金的20%：
+        2. 向上突破时买入剩余资金的20%（如果启用）：
            - 上涨1%时卖出（止盈）
            - 下跌1%时卖出（止损）
            - 只允许一次追加仓位
-        3. 向下跌破时减仓初始仓位的25%：
+        3. 向下跌破时减仓初始仓位的25%（如果启用）：
            - 下跌超过1%时买回（成功）
            - 上涨超过1%时买回（失败）
            - 只允许一次减仓操作
@@ -309,15 +330,19 @@ class HubAnalyzer(RealTimeAnalyzer):
         Args:
             historical_candles: 历史K线数据
             initial_capital: 初始资金
-            additional_take_profit: 追加仓位止盈比例，默认1%
-            additional_stop_loss: 追加仓位止损比例，默认-1%
-            reduction_success: 减仓成功回补比例，默认-1%
-            reduction_fail: 减仓失败回补比例，默认1%
+            additional_take_profit: 追加仓位止盈比例，默认1%，None表示禁用追加仓位
+            additional_stop_loss: 追加仓位止损比例，默认-1%，None表示禁用追加仓位
+            reduction_success: 减仓成功回补比例，默认-1%，None表示禁用减仓
+            reduction_fail: 减仓失败回补比例，默认1%，None表示禁用减仓
         """
         self.candles = []
         self.current_hub = None
         self.active_hubs = []
         
+        initial_percent = 0
+        additional_percent = 0.2
+        reduction_percent = 0.25
+
         # 回测状态
         position = 0  # 持仓数量
         capital = initial_capital  # 当前资金
@@ -334,9 +359,15 @@ class HubAnalyzer(RealTimeAnalyzer):
         has_reduced_position = False  # 是否已经进行过减仓
         reduced_position_info = None  # (减仓价格, 减仓数量, 减仓金额)
         
+        # 检查是否启用追加仓位和减仓功能
+        enable_additional = (additional_take_profit is not None and 
+                            additional_stop_loss is not None)
+        enable_reduction = (reduction_success is not None and 
+                           reduction_fail is not None)
+        
         # 第一根K线建仓
         first_candle = historical_candles[0]
-        initial_position = int(initial_capital * 0.8 / first_candle.open)  # 80%仓位
+        initial_position = int(initial_capital * initial_percent / first_candle.open)  # 80%仓位
         if initial_position > 0:
             position = initial_position
             initial_cost = initial_position * first_candle.open
@@ -346,7 +377,7 @@ class HubAnalyzer(RealTimeAnalyzer):
                 'type': '买入',
                 'price': first_candle.open,
                 'shares': initial_position,
-                'reason': '初始建仓(80%)'
+                'reason': f'初始建仓({initial_percent:.2%})'
             })
         
         # 模拟真实环境逐K线分析
@@ -359,7 +390,7 @@ class HubAnalyzer(RealTimeAnalyzer):
             current_price = candle.close
             
             # 检查减仓回补条件
-            if reduced_position_info is not None:
+            if enable_reduction and reduced_position_info is not None:
                 reduce_price, reduce_shares, reduce_amount = reduced_position_info
                 price_change_ratio = (current_price - reduce_price) / reduce_price
                 
@@ -402,7 +433,7 @@ class HubAnalyzer(RealTimeAnalyzer):
                         has_reduced_position = False
             
             # 检查追加仓位的止盈止损
-            if additional_position_info is not None:
+            if enable_additional and additional_position_info is not None:
                 entry_price, shares = additional_position_info
                 profit_ratio = (current_price - entry_price) / entry_price
                 
@@ -450,7 +481,9 @@ class HubAnalyzer(RealTimeAnalyzer):
                         
             # 如果有活跃中枢，检查是否突破
             elif self._is_price_breaking_hub(current_price, self.current_hub):
-                if current_price > self.current_hub.zg and not has_additional_position:
+                if (current_price > self.current_hub.zg and 
+                    enable_additional and 
+                    not has_additional_position):
                     # 向上突破时买入剩余资金
                     available_capital = capital
                     if available_capital >= current_price:
@@ -469,9 +502,11 @@ class HubAnalyzer(RealTimeAnalyzer):
                                 'reason': '向上突破追加20%仓位'
                             })
                 
-                elif current_price < self.current_hub.zd and not has_reduced_position:
+                elif (current_price < self.current_hub.zd and 
+                      enable_reduction and 
+                      not has_reduced_position):
                     # 向下跌破时减仓初始仓位的25%
-                    reduce_shares = int(initial_position * 0.25)
+                    reduce_shares = int(initial_position * reduction_percent)
                     if reduce_shares > 0:
                         position -= reduce_shares
                         reduce_amount = reduce_shares * current_price
@@ -483,7 +518,7 @@ class HubAnalyzer(RealTimeAnalyzer):
                             'type': '卖出',
                             'price': current_price,
                             'shares': reduce_shares,
-                            'reason': '向下突破减仓25%',
+                            'reason': f'向下突破减仓{reduction_percent:.2%}',
                             'sell_amount': reduce_amount  # 记录卖出金额
                         })
                 

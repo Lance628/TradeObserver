@@ -20,8 +20,8 @@ class CandleManager(threading.Thread):
         self._price_queue = Queue()
         self._running = True
         
-        # 存储不同周期的 analyzers
-        self._analyzers: Dict[int, List[HubAnalyzer]] = defaultdict(list)
+        # 修改存储结构为 {(code, period): [analyzers]}
+        self._analyzers = defaultdict(list)
 
     def run(self):
         """线程主循环"""
@@ -143,8 +143,9 @@ class CandleManager(threading.Thread):
             self.db_manager.save_candle(candle)
             self.logger.debug(f"K线已保存: {candle.code} {candle.period}分钟 {candle.timestamp}")
             
-            # 通知该周期的所有分析器
-            for analyzer in self._analyzers[candle.period]:
+            # 通知对应code和period的所有分析器
+            analyzer_key = (candle.code, candle.period)
+            for analyzer in self._analyzers[analyzer_key]:
                 analyzer.on_candle_update(candle.code, candle)
                 
         except Exception as e:
@@ -205,7 +206,14 @@ class CandleManager(threading.Thread):
         except Exception as e:
             self.logger.error(f"检查缺失K线时出错: {str(e)}")
 
-    def register_analyzer(self, period: int, analyzer: HubAnalyzer):
-        """注册一个特定周期的分析器"""
-        self._analyzers[period].append(analyzer)
-        self.logger.info(f"注册了{period}分钟级别的分析器")
+    def register_analyzer(self, code: str, period: int, analyzer: HubAnalyzer):
+        """注册一个特定代码和周期的分析器
+        
+        Args:
+            code: ETF代码
+            period: K线周期（分钟）
+            analyzer: 分析器实例
+        """
+        analyzer_key = (code, period)
+        self._analyzers[analyzer_key].append(analyzer)
+        self.logger.info(f"注册了{code} {period}分钟级别的分析器")

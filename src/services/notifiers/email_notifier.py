@@ -9,7 +9,7 @@ class EmailNotifier(BaseNotifier):
     def __init__(self):
         super().__init__()
         self.config = EMAIL_CONFIG
-        self.daily_limit = 10  # 每日发送限制
+        self.daily_limit = 100  # 每日发送限制
         self.sent_count = 0    # 当日已发送数量
         self.last_reset_date = datetime.now().date()  # 上次重置日期
     
