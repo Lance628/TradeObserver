@@ -9,7 +9,7 @@ LOG_PATH = BASE_DIR / "logs"
 TUSHARE_TOKEN = "e8537fb5ca8b4f700997e34289d7406f8481977a86a2af2df26d3b30"
 
 # 监控的ETF代码
-ETF_CODES = ['588200','513130']
+ETF_CODES = ['588200','513130','159792']
 
 # 数据获取间隔（秒）
 FETCH_INTERVAL = 3
@@ -54,7 +54,19 @@ HUB_ANALYZER_PARAMS = {
             'hub_break_threshold': 0.3
         },
         5: {
-            'min_candles_for_hub': 5,
+            'min_candles_for_hub': 10,
+            'overlap_threshold': 0.7,
+            'hub_break_threshold': 0.3
+        }
+    },
+    '159792': {
+        1: {
+            'min_candles_for_hub': 18,
+            'overlap_threshold': 0.7,
+            'hub_break_threshold': 0.3
+        },
+        5: {
+            'min_candles_for_hub': 13,
             'overlap_threshold': 0.7,
             'hub_break_threshold': 0.3
         }
@@ -87,14 +99,28 @@ HUB_BREAK_PARAMS = {
     },
     '513130': {
         1: {
-            'up_take_profit': 0.01,
-            'up_stop_loss': -0.014,
+            'up_take_profit': 0.006,
+            'up_stop_loss': -0.026,
             'down_take_profit': 0.01,
             'down_stop_loss': -0.005
         },
         5: {
-            'up_take_profit': 0.008,
-            'up_stop_loss': -0.01,
+            'up_take_profit': 0.06,
+            'up_stop_loss': -0.026,
+            'down_take_profit': 0.015,
+            'down_stop_loss': -0.008
+        }
+    },
+    '159792': {
+        1: {
+            'up_take_profit': 0.022,
+            'up_stop_loss': -0.03,
+            'down_take_profit': 0.01,
+            'down_stop_loss': -0.005
+        },
+        5: {
+            'up_take_profit': 0.022,
+            'up_stop_loss': -0.028,
             'down_take_profit': 0.015,
             'down_stop_loss': -0.008
         }

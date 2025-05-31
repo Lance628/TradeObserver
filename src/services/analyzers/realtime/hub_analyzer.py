@@ -258,7 +258,7 @@ class HubAnalyzer(RealTimeAnalyzer):
 
     def _notify_new_hub(self, hub: Hub):
         """发送新中枢通知"""
-        subject = f"新{self.period}分钟中枢形成通知 - {hub.hub_type.value}"
+        subject = f"{self.current_code}新{self.period}分钟中枢形成通知 - {hub.hub_type.value}"
         content = self._format_hub_notification(hub)
         if not self.email_notifier.send_notification(subject, content):
             # 如果发送失败（达到限制），记录到日志

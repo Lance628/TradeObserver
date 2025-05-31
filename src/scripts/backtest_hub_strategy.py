@@ -43,7 +43,7 @@ def run_backtest(
     historical_data = db_manager.get_candles(
         code=code,
         period=period,
-        limit=100000
+        limit=1200
     )
     
     if not historical_data:
@@ -546,13 +546,13 @@ def generate_params_combinations():
     params_combinations = []
     
     # 定义参数范围
-    take_profit_range = [i * 0.002 for i in range(2, 8)]  # 0.01 到 0.035
-    stop_loss_range = [i * -0.002 for i in range(2, 8)]   # -0.01 到 -0.035
-    reduction_success_range = [i * -0.002 for i in range(2, 8)]  # -0.01 到 -0.035
-    # reduction_success_range = [None]
-    reduction_fail_range = [i * 0.002 for i in range(2, 8)]      # 0.01 到 0.035
-    # reduction_fail_range = [None]
-    min_candles_range = [4,5,6,7,8,9,10,11,12]  # 中枢形成所需K线数
+    take_profit_range = [i * 0.002 for i in range(2, 16)]  # 0.01 到 0.035
+    stop_loss_range = [i * -0.002 for i in range(2, 16)]   # -0.01 到 -0.035
+    # reduction_success_range = [i * -0.002 for i in range(2, 8)]  # -0.01 到 -0.035
+    reduction_success_range = [None]
+    # reduction_fail_range = [i * 0.002 for i in range(2, 8)]      # 0.01 到 0.035
+    reduction_fail_range = [None]
+    min_candles_range = [4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]  # 中枢形成所需K线数
     
     # 生成所有可能的组合
     for take_profit in take_profit_range:
@@ -636,30 +636,44 @@ def main():
 
     test_cases = [
         {
+            'code': '159792',  
+            'start_date': '2023-01-01',
+            'end_date': '2025-05-31',
+            'period': 1,
+            'initial_capital': 200000.0
+        },
+        {
+            'code': '159792',  
+            'start_date': '2023-01-01',
+            'end_date': '2025-05-31',
+            'period': 5,
+            'initial_capital': 200000.0
+        },
+        {
             'code': '513130',  
             'start_date': '2023-01-01',
-            'end_date': '2025-01-28',
+            'end_date': '2025-05-31',
             'period': 1,
             'initial_capital': 200000.0
         },
         {
             'code': '513130',  
             'start_date': '2023-01-01',
-            'end_date': '2025-01-28',
+            'end_date': '2025-05-31',
             'period': 5,
             'initial_capital': 200000.0
         },
         {
             'code': '588200',  
             'start_date': '2023-01-01',
-            'end_date': '2025-01-28',
+            'end_date': '2025-05-31',
             'period': 1,
             'initial_capital': 200000.0
         },
         {
             'code': '588200',  
             'start_date': '2023-01-01',
-            'end_date': '2025-01-28',
+            'end_date': '2025-05-31',
             'period': 5,
             'initial_capital': 200000.0
         }
