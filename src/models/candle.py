@@ -15,11 +15,6 @@ class Candle:
     code: str          # 股票代码
     period: int        # K线周期（分钟）
     
-    @property
-    def end_timestamp(self) -> datetime:
-        """获取K线的结束时间"""
-        from ..utils.time_utils import get_period_end_time
-        return get_period_end_time(self.timestamp, self.period)
     
     def update(self, price: float, volume: float, amount: float):
         """更新K线数据"""
